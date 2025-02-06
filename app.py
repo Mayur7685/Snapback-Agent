@@ -1,11 +1,21 @@
 import streamlit as st
 from PIL import Image
 import moondream as md
+import json
 import os
+from dotenv import load_dotenv
 
-# Initialize Moondream model
-api_key = os.getenv("MOONDREAM_API_KEY")
-model = md.vl(api_key=api_key)
+# Load environment variables from .env file
+load_dotenv()
+
+# Retrieve API key from environment variable
+MOONDREAM_API_KEY = os.getenv("MOONDREAM_API_KEY")
+
+if not MOONDREAM_API_KEY:
+    st.error("API Key is missing. Please set it in the .env file.")
+else:
+    # Initialize Moondream model with API key
+    model = md.vl(api_key=MOONDREAM_API_KEY)
 
 # Streamlit UI
 st.title("SnapBack Complaint Analyzer 🚀")
@@ -15,26 +25,60 @@ complaint_text = st.text_input("Describe your complaint (e.g. 'Expired milk from
 
 if uploaded_image and complaint_text:
     image = Image.open(uploaded_image)
-    st.image(image, caption="Uploaded Image", use_column_width=True)
 
     if st.button("Analyze Complaint"):
-        # Prepare image+text prompt
-        prompt = f"Analyze this complaint: {complaint_text}. Check for: \
-        1. Product condition 2. Expiry date 3. Packaging damage. \
-        Respond in JSON format with severity (high/medium/low) and verification status."
+        prompt = f"""
+Analyze this food-related complaint: "{complaint_text}". Based on the uploaded image, perform the following checks:
 
-        # Encode the image
+1. **Product Condition**: Assess the physical state of the food item.
+2. **Expiry Date**: Verify if the product is expired or close to expiration.
+3. **Packaging Integrity**: Check for signs of tampering, leaks, or damage.
+4. **Food Safety Concerns**: Identify potential health hazards.
+
+Respond in JSON format:
+{{
+  "product_condition": "...",
+  "expiry_status": "...",
+  "packaging_integrity": "...",
+  "food_safety_concerns": "...",
+  "severity": "...",
+  "verification_status": "..."
+}}
+"""
+
         encoded_image = model.encode_image(image)
 
-        # Generate analysis with Moondream
         with st.spinner("Analyzing complaint..."):
-            analysis = model.query(encoded_image, prompt)["answer"]
-        
-        # Display results
-        st.subheader("AI Analysis:")
-        st.write(analysis)
+            try:
+                analysis = model.query(encoded_image, prompt)["answer"]
+                analysis_json = json.loads(analysis)  # Convert response to JSON
+                
+                # Extract key insights
+                product_condition = analysis_json.get("product_condition", "N/A")
+                expiry_status = analysis_json.get("expiry_status", "N/A")
+                packaging_integrity = analysis_json.get("packaging_integrity", "N/A")
+                food_safety_concerns = analysis_json.get("food_safety_concerns", "N/A")
+                severity = analysis_json.get("severity", "N/A")
+                verification_status = analysis_json.get("verification_status", "N/A")
 
-        # Generate suggested tweet
-        st.subheader("Suggested Tweet:")
-        tweet = f"@{complaint_text.split()[-1]}Care {complaint_text} - Verified by @SnapBackAI\n#QuickCommerce #ConsumerRights"
-        st.code(tweet)
+                # Twitter-style thread with callouts
+                st.subheader("📢 Suggested Twitter Thread")
+
+                st.markdown(f"**SnapBack AI**  🚀 (@SnapBackAI)  \n*1h ago*")
+                st.info(f"**Complaint:** {complaint_text}")
+
+                st.image(image, caption="Complaint Image", use_container_width=True)
+
+                st.success(f"✅ **Product Condition:** {product_condition}")
+                st.warning(f"⏳ **Expiry Status:** {expiry_status}")
+                st.error(f"📦 **Packaging Integrity:** {packaging_integrity}")
+                st.info(f"⚠️ **Food Safety Concerns:** {food_safety_concerns}")
+                st.error(f"🔴 **Severity:** `{severity.upper()}`")
+                st.warning(f"🟢 **Verification Status:** `{verification_status}`")
+
+                st.markdown("---")
+                st.markdown("🔁 **Retweets:** 245 | ❤️ **Likes:** 1.2K")
+
+
+            except Exception as e:
+                st.error(f"An error occurred: {e}")
